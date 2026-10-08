@@ -1,4 +1,4 @@
-# 📡 Dashboard Giám sát và Điều khiển IoT (ESP32)
+# 📡 Dashboard Giám sát độ ẩm và ánh sáng trong nông nghiệp (ESP32)
 
 ESP32 đọc **ánh sáng** và **độ ẩm**, tự bật đèn khi trời tối, kêu còi cảnh báo theo ngưỡng độ ẩm, đồng thời gửi dữ liệu lên server qua HTTP. Server hiển thị dữ liệu trên **web dashboard** (Thymeleaf + Bootstrap) và điều khiển đèn LED từ xa.
 
