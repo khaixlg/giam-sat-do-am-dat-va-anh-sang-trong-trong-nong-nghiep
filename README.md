@@ -1,36 +1,34 @@
-# 🏠 Nhà thông minh – ESP32 + Web Dashboard IoT
+# 📡 Dashboard Giám sát và Điều khiển IoT (ESP32)
 
-Hệ thống giám sát và điều khiển IoT gồm **ESP32** (đọc cảm biến, điều khiển đèn, còi cảnh báo) và **web dashboard** (Java Spring Boot + Thymeleaf) hiển thị dữ liệu theo thời gian thực, đồng thời điều khiển đèn LED từ xa.
+ESP32 đọc **ánh sáng** và **độ ẩm**, tự bật đèn khi trời tối, kêu còi cảnh báo theo ngưỡng độ ẩm, đồng thời gửi dữ liệu lên server qua HTTP. Server hiển thị dữ liệu trên **web dashboard** (Thymeleaf + Bootstrap) và điều khiển đèn LED từ xa.
+
+## 📦 Thành phần
+
+| File | Vai trò |
+|---|---|
+| `chuabt.ino` | Firmware ESP32 (Arduino + FreeRTOS) |
+| `web.html` | Giao diện dashboard (Thymeleaf template, Bootstrap 5.3.3) |
 
 ## ✨ Tính năng
 
-- **Đo ánh sáng** bằng cảm biến quang trở (LDR): tự bật đèn LED khi trời tối.
-- **Đo độ ẩm** bằng cảm biến độ ẩm, quy ra phần trăm.
-- **Còi cảnh báo** theo hai mức:
-  - Cảnh báo: độ ẩm từ trên 10% đến 50% → còi bíp ngắt quãng.
-  - Nguy hiểm: độ ẩm trên 50% → còi bíp mạnh hơn.
-  - Độ ẩm từ 10% trở xuống → còi tắt.
-- **Gửi dữ liệu lên server** qua HTTP POST, server lưu lại lịch sử.
-- **Điều khiển đèn LED từ xa**: server trả về trạng thái `led`, ESP32 bật/tắt đèn theo đó.
-- **Web dashboard**:
-  - Hiển thị trạng thái đèn LED và còi báo động.
-  - Nút **BẬT LED / TẮT LED**.
-  - Bảng dữ liệu cảm biến (thời gian, ánh sáng, độ ẩm).
-- Chạy đa luồng bằng **FreeRTOS** (mỗi chức năng một task riêng).
+**Firmware ESP32** – 3 task chạy song song bằng FreeRTOS:
 
-## 🧱 Kiến trúc
+- **Task_LDR_LED**: đọc cảm biến ánh sáng (trung bình 5 lần), giá trị **dưới 750** thì bật đèn LED, ngược lại tắt. Chu kỳ 200 ms.
+- **Task_Buzzer_Soil**: đọc độ ẩm, quy ra %, và điều khiển còi:
 
-```
-┌────────────┐   POST /sensor/add    ┌──────────────────────┐
-│   ESP32    │ ────────────────────► │  Server Spring Boot  │
-│ LDR, Soil  │  light, humidity      │  (Thymeleaf + DB)    │
-│ LED, Buzzer│ ◄──────────────────── │                      │
-└────────────┘   JSON {"led": 0|1}   └──────────┬───────────┘
-                                                │
-                                         ┌──────▼──────┐
-                                         │ Web Dashboard│
-                                         └─────────────┘
-```
+  | Độ ẩm | Hành vi của còi |
+  |---|---|
+  | ≤ 10% | Tắt, reset bộ đếm |
+  | Trên 10% đến 50% | Cảnh báo: bíp tối đa 6 lần |
+  | Trên 50% | Nguy hiểm: bíp mạnh hơn, tối đa 10 lần |
+
+- **Task_SendData**: gửi dữ liệu lên server mỗi ~0,7 giây và nhận lệnh bật/tắt đèn từ server.
+
+**Web dashboard** (`web.html`):
+
+- Ô trạng thái **Đèn LED** (ĐANG BẬT / ĐANG TẮT) kèm nút **BẬT LED**, **TẮT LED**.
+- Ô trạng thái **Còi báo động**.
+- Bảng **dữ liệu cảm biến**: thời gian, ánh sáng, độ ẩm (%).
 
 ## 🧰 Phần cứng
 
@@ -39,28 +37,17 @@ Hệ thống giám sát và điều khiển IoT gồm **ESP32** (đọc cảm bi
 | Cảm biến độ ẩm (Soil) | GPIO 34 (analog) |
 | Cảm biến ánh sáng LDR | GPIO 35 (analog) |
 | Đèn LED | GPIO 15 |
-| Còi (buzzer) | GPIO 32 (PWM) |
-
-Sơ đồ nối dây xem trong `assets/so-do.png`.
-
-## 💻 Công nghệ
-
-- **Firmware**: Arduino framework cho ESP32, FreeRTOS, `HTTPClient`, `ArduinoJson`.
-- **Backend / Web**: Java Spring Boot, Thymeleaf, Bootstrap 5.3.
-- **Giao tiếp**: HTTP (form-urlencoded) giữa ESP32 và server.
+| Còi (buzzer) | GPIO 32 (PWM, 1500 Hz, 8 bit) |
 
 ## 🔌 Giao tiếp ESP32 ↔ Server
 
-**ESP32 gửi** mỗi ~0,7 giây:
+ESP32 gửi bằng **HTTP POST** (`application/x-www-form-urlencoded`) tới địa chỉ `serverName`:
 
 ```
-POST /sensor/add
-Content-Type: application/x-www-form-urlencoded
-
-light=<giá trị LDR>&humidity=<độ ẩm %>
+light=<giá trị ánh sáng>&humidity=<độ ẩm %>
 ```
 
-**Server trả về** JSON để điều khiển đèn:
+Server trả về JSON để điều khiển đèn:
 
 ```json
 { "led": 1 }
@@ -70,34 +57,38 @@ light=<giá trị LDR>&humidity=<độ ẩm %>
 
 ## 🚀 Cài đặt
 
-### 1. Chạy server (web dashboard)
+### Firmware
 
-1. Cài **JDK** và (tuỳ dự án) **Maven/Gradle**.
-2. Chạy ứng dụng Spring Boot, mặc định cổng **8080**.
-3. Mở trình duyệt: `http://localhost:8080`.
-4. Ghi lại **địa chỉ IP máy chạy server** trong mạng LAN (ví dụ `192.168.1.233`).
-
-### 2. Nạp firmware cho ESP32
-
-1. Cài **Arduino IDE** và board **esp32 by Espressif Systems** (core 3.x).
-2. Cài thư viện **ArduinoJson** trong Library Manager.
-3. Mở file `.ino` và chỉnh các dòng sau:
+1. Cài **Arduino IDE** và board **esp32 by Espressif Systems** (core **3.x**, code dùng `ledcAttach`).
+2. Cài thư viện **ArduinoJson** (Library Manager).
+3. Mở `chuabt.ino`, điền 3 dòng:
    ```cpp
    const char* ssid       = "YOUR_WIFI_NAME";
    const char* password   = "YOUR_WIFI_PASSWORD";
-   const char* serverName = "http://<IP_SERVER>:8080/sensor/add";
+   const char* serverName = "http://<IP_SERVER>:<PORT>/<đường_dẫn>";
    ```
 4. Chọn board **ESP32 Dev Module**, chọn cổng COM, bấm **Upload**.
-5. Mở Serial Monitor (115200 baud) để xem địa chỉ IP và log kết nối.
+5. Mở Serial Monitor (115200 baud) để xem IP và trạng thái kết nối.
 
-> ESP32 và máy chạy server phải **cùng mạng WiFi/LAN**.
+> ESP32 và máy chạy server cần **cùng mạng WiFi/LAN** (WiFi 2.4 GHz).
 
-## ⚙️ Thông số có thể chỉnh
+### Web dashboard
 
-| Thông số | Mặc định | Ý nghĩa |
-|---|---|---|
-| Ngưỡng LDR | `750` | Giá trị đọc được nhỏ hơn mức này thì bật đèn |
-| Ngưỡng cảnh báo độ ẩm | `10 – 50 %` | Còi bíp ở mức cảnh báo |
-| Ngưỡng nguy hiểm độ ẩm | `> 50 %` | Còi bíp ở mức nguy hiểm |
-| Tần số còi | `1500 Hz` | PWM 8 bit |
-| Chu kỳ gửi dữ liệu | `700 ms` | Task gửi dữ liệu lên server |
+`web.html` là template **Thymeleaf**, cần đặt trong project Java (ví dụ Spring Boot) tại `src/main/resources/templates/` và để controller truyền vào các biến:
+
+| Biến | Ý nghĩa |
+|---|---|
+| `ledStatus` | `1` = LED đang bật, `0` = tắt |
+| `buzzerStatus` | `1` = còi đang bật, `0` = tắt |
+| `data` | Danh sách bản ghi có `timestamp`, `light`, `humidity` |
+
+Nút điều khiển LED gọi hàm JavaScript `sendLedControl(1)` / `sendLedControl(0)`, hàm này cần gửi lệnh về server.
+
+## ⚙️ Thông số có thể chỉnh (`chuabt.ino`)
+
+| Thông số | Giá trị hiện tại |
+|---|---|
+| Ngưỡng bật đèn (LDR) | `rawValue < 750` |
+| Ngưỡng cảnh báo độ ẩm | `10% < độ ẩm ≤ 50%` |
+| Ngưỡng nguy hiểm độ ẩm | `độ ẩm > 50%` |
+| Chu kỳ gửi dữ liệu | `700 ms` |
